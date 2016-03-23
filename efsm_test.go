@@ -1,4 +1,4 @@
-package fsm
+package efsm
 
 import (
 	"fmt"
@@ -21,13 +21,13 @@ func ExampleFSM() {
 		fmt.Printf("Case %s %s\n", s.Name, e)
 		x := 0
 
-		if s.Value != nil {
+		if s.Data != nil {
 
-			x = *s.Value.(*int)
+			x = *s.Data.(*int)
 		}
 		fmt.Printf("Rebooting %d time\n", x)
 		x += 1
-		return f.Goto("Rebooting").ForMax(5 * time.Second).With(&x)
+		return f.Goto("Rebooting").ForMax(5 * time.Second).Using(&x)
 	})
 	if err  != nil {
 		return
@@ -39,7 +39,7 @@ func ExampleFSM() {
 	err = s.Case([]Event{"booted"}, func(f *FSM, s *State, e Event) *State {
 		fmt.Printf("Case %s %s\n", s.Name, e)
 
-		return f.Goto("Running").With(s.Value)
+		return f.Goto("Running").Using(s.Data)
 	})
 
 	if err  != nil {
@@ -50,7 +50,7 @@ func ExampleFSM() {
 	err = s.Case([]Event{"Rebooting-timeout"}, func(f *FSM, s *State, e Event) *State {
 		fmt.Printf("Case %s %s\n", s.Name, e)
 
-		return f.Goto("Failed").With(s.Value)
+		return f.Goto("Failed").Using(s.Data)
 	})
 
 	if err  != nil {
@@ -62,13 +62,13 @@ func ExampleFSM() {
 		fmt.Printf("Case %s %s\n", s.Name, e)
 
 		x := 0
-		if s.Value != nil {
-			x = *s.Value.(*int)
+		if s.Data != nil {
+			x = *s.Data.(*int)
 		}
 		fmt.Printf("Rebooting %d time\n", x)
 		x += 1
 
-		return f.Goto("Rebooting").ForMax(5 * time.Second).With(&x)
+		return f.Goto("Rebooting").ForMax(5 * time.Second).Using(&x)
 	})
 	if err  != nil {
 		return
