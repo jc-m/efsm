@@ -20,7 +20,11 @@ func ExampleHFSM(){
 	slaveIn := make(chan Event, 1)
 	slave.Engine(slaveIn, masterIn)
 
-	err = slave.When("Running").Case([]Event{"stop"}, func(f *FSM, s *State, e Event) *State {
+	stop := Event{
+		Name: "stop",
+		Source: slave.ID,
+	}
+	err = slave.When("Running").Case([]Event{stop}, func(f *FSM, s *State, e Event) *State {
 		fmt.Printf("Case %s %s\n", s.Name, e)
 
 		return f.Goto("Stopped")
@@ -28,7 +32,11 @@ func ExampleHFSM(){
 	if err  != nil {
 		return
 	}
-	err = slave.When("Stopped").Case([]Event{"start"}, func(f *FSM, s *State, e Event) *State {
+	start := Event{
+		Name: "start",
+		Source: slave.ID,
+	}
+	err = slave.When("Stopped").Case([]Event{start}, func(f *FSM, s *State, e Event) *State {
 		fmt.Printf("Case %s %s\n", s.Name, e)
 
 		return f.Goto("Running")
@@ -37,7 +45,11 @@ func ExampleHFSM(){
 		return
 	}
 
-	err = master.When("Running").Case([]Event{"Stopped"}, func(f *FSM, s *State, e Event) *State {
+	stopped := Event{
+		Name: "Stopped",
+		Source: slave.ID,
+	}
+	err = master.When("Running").Case([]Event{stopped}, func(f *FSM, s *State, e Event) *State {
 		fmt.Printf("Case %s %s\n", s.Name, e)
 
 		return f.Goto("Failed")
@@ -45,8 +57,11 @@ func ExampleHFSM(){
 	if err  != nil {
 		return
 	}
-
-	err = master.When("Failed").Case([]Event{"Running"}, func(f *FSM, s *State, e Event) *State {
+	running := Event{
+		Name: "Running",
+		Source: slave.ID,
+	}
+	err = master.When("Failed").Case([]Event{running}, func(f *FSM, s *State, e Event) *State {
 		fmt.Printf("Case %s %s\n", s.Name, e)
 
 		return f.Goto("Running")
@@ -60,19 +75,19 @@ func ExampleHFSM(){
 
 
 	go func() {
-		time.Sleep(10 * time.Second)
-		slaveIn <- "stop"
-		time.Sleep(10 * time.Second)
-		slaveIn <- "start"
+		time.Sleep(2 * time.Second)
+		slaveIn <- stop
+		time.Sleep(2 * time.Second)
+		slaveIn <- start
 	}()
-	time.Sleep(30 * time.Second)
+	time.Sleep(10 * time.Second)
 	fmt.Printf("Done")
 
 
 	//Output:
-	//Case Running stop
-	//Case Running Stopped
-	//Case Stopped start
-	//Case Failed Running
+	//Case Running {stop slave}
+	//Case Running {Stopped slave}
+	//Case Stopped {start slave}
+	//Case Failed {Running slave}
 	//Done
 }

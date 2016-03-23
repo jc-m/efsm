@@ -15,9 +15,17 @@ func ExampleFSM() {
 	f.Engine(in, out)
 
 	var err error
+	reboot := Event{
+		Name: "reboot",
+		Source: f.ID,
+	}
 
+	reset := Event{
+		Name: "reset",
+		Source: f.ID,
+	}
 	// In state Running, when event reboot or reset is received, go to Rebooting with a 5s timeout
-	err = f.When("Running").Case([]Event{"reboot", "reset"}, func(f *FSM, s *State, e Event) *State {
+	err = f.When("Running").Case([]Event{reboot, reset}, func(f *FSM, s *State, e Event) *State {
 		fmt.Printf("Case %s %s\n", s.Name, e)
 		x := 0
 
@@ -35,8 +43,13 @@ func ExampleFSM() {
 
 	s := f.When("Rebooting")
 
+	booted := Event{
+		Name: "booted",
+		Source: f.ID,
+	}
+
 	// If event booted is received go back to Running
-	err = s.Case([]Event{"booted"}, func(f *FSM, s *State, e Event) *State {
+	err = s.Case([]Event{booted}, func(f *FSM, s *State, e Event) *State {
 		fmt.Printf("Case %s %s\n", s.Name, e)
 
 		return f.Goto("Running").Using(s.Data)
@@ -46,8 +59,12 @@ func ExampleFSM() {
 		return
 	}
 
+	rebootedTimeout := Event{
+		Name: "Rebooting-timeout",
+		Source: f.ID,
+	}
 	// if timeout is received - moved to failed.
-	err = s.Case([]Event{"Rebooting-timeout"}, func(f *FSM, s *State, e Event) *State {
+	err = s.Case([]Event{rebootedTimeout}, func(f *FSM, s *State, e Event) *State {
 		fmt.Printf("Case %s %s\n", s.Name, e)
 
 		return f.Goto("Failed").Using(s.Data)
@@ -58,7 +75,7 @@ func ExampleFSM() {
 	}
 
 	// In state Failed, when event reset is received, go to Rebooting with a 5s timeout
-	err = f.When("Failed").Case([]Event{"reset"}, func(f *FSM, s *State, e Event) *State {
+	err = f.When("Failed").Case([]Event{reset}, func(f *FSM, s *State, e Event) *State {
 		fmt.Printf("Case %s %s\n", s.Name, e)
 
 		x := 0
@@ -79,9 +96,9 @@ func ExampleFSM() {
 
 	// Send a reboot event and after 10s send a reset
 	go func() {
-		in <- "reboot"
+		in <- reboot
 		time.Sleep(10 * time.Second)
-		in <- "reset"
+		in <- reset
 	}()
 
 

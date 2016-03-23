@@ -7,7 +7,10 @@ import (
 	"log"
 )
 // TODO Event should be more than a string
-type Event string
+type Event struct {
+	Name   string
+	Source string
+}
 
 type Transition func(f *FSM, s *State, e Event) *State
 
@@ -23,8 +26,8 @@ type State struct {
 }
 
 type Timeout struct {
-	EventName string
-	duration  time.Duration
+	Event    Event
+	duration time.Duration
 }
 
 // state x event => action => [state',...]
@@ -58,8 +61,9 @@ func (f *FSM) setCurrentState(newState *State) error {
 			s.timers[s.Name] = timer
 			go func() {
 				<-timer.C
-				log.Printf("%s| Timeout: %s", f.ID, s.StateTimeout.EventName)
-				f.In <- Event(s.StateTimeout.EventName)
+				s.StateTimeout.Event.Source = f.ID
+				log.Printf("%s| Timeout: %+v", f.ID, s.StateTimeout.Event)
+				f.In <- Event(s.StateTimeout.Event)
 				// timer expired or stopped - delete from map
 				delete(s.timers, s.Name)
 			}()
@@ -103,7 +107,7 @@ func (s *State) Using(v interface{}) *State {
 
 func (s *State) ForMax(d time.Duration) *State {
 	s.StateTimeout = &Timeout{
-		EventName: string(s.Name) + "-timeout",
+		Event: Event{Name:string(s.Name) + "-timeout"},
 		duration: d,
 	}
 	return s
@@ -129,21 +133,24 @@ func (f *FSM) Run(initial StateName) error {
 	if s, ok := f.States[initial]; ok {
 		f.setCurrentState(s)
 	} else {
-		panic(fmt.Errorf("%s| Unknown initial state: %s",f.ID, initial))
+		panic(fmt.Errorf("%s| Unknown initial state: %s", f.ID, initial))
 	}
 
 	for eIn := range f.In {
 		f.Lock()
-		log.Printf("%s| Received Event: %s\n", f.ID, eIn)
+		log.Printf("%s| Received Event: %+v\n", f.ID, eIn)
 		s := f.States[f.CurrentState]
 		if fn, ok := s.transitions[eIn]; ok {
 			newState := fn(f, s, eIn)
 			if newState != nil {
 				log.Printf("%s| --> %s\n", f.ID, newState.Name)
-				eOut := Event(newState.Name)
+				eOut := Event{
+					Name: string(newState.Name),
+					Source: f.ID,
+				}
 				select {
 				case f.Out <- eOut:
-					log.Printf("%s| Sending Event: %s\n", f.ID, newState.Name)
+					log.Printf("%s| Sending Event: %+v\n", f.ID, eOut)
 				default:
 				}
 				// stopping timer before transition
