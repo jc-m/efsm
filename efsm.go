@@ -6,10 +6,10 @@ import (
 	"time"
 	"log"
 )
-// TODO Event should be more than a string
+// TODO event matching need to be revisited - for now, only look at the name
 type Event struct {
-	Name   string
-	Source string
+	Name  string
+	Scope string
 }
 
 type Transition func(f *FSM, s *State, e Event) *State
@@ -21,7 +21,7 @@ type State struct {
 	Name         StateName
 	StateTimeout *Timeout
 	timers       map[StateName]*time.Timer
-	transitions  map[Event]Transition
+	transitions  map[string]Transition
 	Data         interface{}
 }
 
@@ -47,6 +47,7 @@ func (f *FSM) setCurrentState(newState *State) error {
 	if s, ok := f.States[newState.Name]; ok {
 		f.CurrentState = newState.Name
 		s.Data = newState.Data
+
 		if s.StateTimeout == nil {
 			s.StateTimeout = newState.StateTimeout
 		}
@@ -61,12 +62,25 @@ func (f *FSM) setCurrentState(newState *State) error {
 			s.timers[s.Name] = timer
 			go func() {
 				<-timer.C
-				s.StateTimeout.Event.Source = f.ID
+				s.StateTimeout.Event.Scope = f.ID
 				log.Printf("%s| Timeout: %+v", f.ID, s.StateTimeout.Event)
 				f.In <- Event(s.StateTimeout.Event)
 				// timer expired or stopped - delete from map
 				delete(s.timers, s.Name)
 			}()
+		}
+
+		log.Printf("%s| --> %s\n", f.ID, newState.Name)
+		eOut := Event{
+			Name: string(newState.Name),
+			Scope: f.ID,
+		}
+		// Sending event without blocking
+		
+		select {
+		case f.Out <- eOut:
+			log.Printf("%s| Sending Event: %+v\n", f.ID, eOut)
+		default:
 		}
 
 	} else {
@@ -92,7 +106,7 @@ func (f *FSM) When(name StateName) *State {
 	newState := &State{
 		Name:name,
 		StateTimeout: nil,
-		transitions:  make(map[Event]Transition),
+		transitions:  make(map[string]Transition),
 		timers: make(map[StateName]*time.Timer),
 	}
 	f.States[name] = newState
@@ -115,7 +129,10 @@ func (s *State) ForMax(d time.Duration) *State {
 
 func (s *State) Case(events []Event, fn Transition) error {
 	for _, e := range events {
-		s.transitions[e] = fn
+		if _, ok := s.transitions[e.Name]; ok {
+			return fmt.Errorf("Duplicate Event name: %s", e.Name)
+		}
+		s.transitions[e.Name] = fn
 	}
 	return nil
 }
@@ -140,19 +157,9 @@ func (f *FSM) Run(initial StateName) error {
 		f.Lock()
 		log.Printf("%s| Received Event: %+v\n", f.ID, eIn)
 		s := f.States[f.CurrentState]
-		if fn, ok := s.transitions[eIn]; ok {
+		if fn, ok := s.transitions[eIn.Name]; ok {
 			newState := fn(f, s, eIn)
 			if newState != nil {
-				log.Printf("%s| --> %s\n", f.ID, newState.Name)
-				eOut := Event{
-					Name: string(newState.Name),
-					Source: f.ID,
-				}
-				select {
-				case f.Out <- eOut:
-					log.Printf("%s| Sending Event: %+v\n", f.ID, eOut)
-				default:
-				}
 				// stopping timer before transition
 				if t, ok := s.timers[s.Name]; ok {
 					log.Printf("%s| Stoping Timer %s\n", f.ID, s.Name)
@@ -163,6 +170,8 @@ func (f *FSM) Run(initial StateName) error {
 			if err := f.setCurrentState(newState); err != nil {
 				panic(err)
 			}
+		} else {
+			log.Printf("%s| Ignored Event: %+v\n", f.ID, eIn)
 		}
 		f.Unlock()
 	}

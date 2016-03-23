@@ -17,12 +17,12 @@ func ExampleFSM() {
 	var err error
 	reboot := Event{
 		Name: "reboot",
-		Source: f.ID,
+		Scope: f.ID,
 	}
 
 	reset := Event{
 		Name: "reset",
-		Source: f.ID,
+		Scope: f.ID,
 	}
 	// In state Running, when event reboot or reset is received, go to Rebooting with a 5s timeout
 	err = f.When("Running").Case([]Event{reboot, reset}, func(f *FSM, s *State, e Event) *State {
@@ -45,7 +45,7 @@ func ExampleFSM() {
 
 	booted := Event{
 		Name: "booted",
-		Source: f.ID,
+		Scope: f.ID,
 	}
 
 	// If event booted is received go back to Running
@@ -61,7 +61,7 @@ func ExampleFSM() {
 
 	rebootedTimeout := Event{
 		Name: "Rebooting-timeout",
-		Source: f.ID,
+		Scope: f.ID,
 	}
 	// if timeout is received - moved to failed.
 	err = s.Case([]Event{rebootedTimeout}, func(f *FSM, s *State, e Event) *State {
