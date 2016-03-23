@@ -32,10 +32,12 @@ type Timeout struct {
 
 
 type FSM struct {
+	ID           string
 	sync.Mutex
 	CurrentState StateName
 	States       map[StateName]*State
-	Events       chan Event
+	In           chan Event
+	Out          chan Event
 }
 
 func (f *FSM) setCurrentState(newState *State) error {
@@ -56,15 +58,15 @@ func (f *FSM) setCurrentState(newState *State) error {
 			s.timers[s.Name] = timer
 			go func() {
 				<-timer.C
-				log.Printf("Timeout: %s", s.StateTimeout.EventName)
-				f.Events <- Event(s.StateTimeout.EventName)
+				log.Printf("%s| Timeout: %s", f.ID, s.StateTimeout.EventName)
+				f.In <- Event(s.StateTimeout.EventName)
 				// timer expired or stopped - delete from map
 				delete(s.timers, s.Name)
 			}()
 		}
 
 	} else {
-		return fmt.Errorf("Invalid State")
+		return fmt.Errorf("%s| Invalid State", f.ID)
 	}
 	return nil
 }
@@ -74,14 +76,14 @@ func (f *FSM) Goto(name StateName) *State {
 		f.CurrentState = name
 		return s
 	} else {
-		panic(fmt.Errorf("Unknown state to transition to: %s", name))
+		panic(fmt.Errorf("%s| Unknown state to transition to: %s", f.ID, name))
 	}
 }
 
 // TODO allow the specification of a default timeout for this state like When(name StateName, t Timeout)
 func (f *FSM) When(name StateName) *State {
 	if _, ok := f.States[name]; ok {
-		panic(fmt.Errorf("Duplicate state registration %s", name))
+		panic(fmt.Errorf("%s| Duplicate state registration %s", f.ID, name))
 	}
 	newState := &State{
 		Name:name,
@@ -113,30 +115,40 @@ func (s *State) Case(events []Event, fn Transition) error {
 	}
 	return nil
 }
-func (f *FSM) Engine(c chan Event) error {
-	f.Events = c
+func (f *FSM) Engine(In, Out chan Event) error {
+	f.In = In
+	f.Out = Out
 	f.States = make(map[StateName]*State)
+
 	return nil
 }
 
 func (f *FSM) Run(initial StateName) error {
-	log.Printf("In Run")
+	log.Printf("%s| Running ....", f.ID)
+
 	if s, ok := f.States[initial]; ok {
 		f.setCurrentState(s)
 	} else {
-		panic(fmt.Errorf("Unknown initial state: %s", initial))
+		panic(fmt.Errorf("%s| Unknown initial state: %s",f.ID, initial))
 	}
 
-	for e := range f.Events {
+	for eIn := range f.In {
 		f.Lock()
+		log.Printf("%s| Received Event: %s\n", f.ID, eIn)
 		s := f.States[f.CurrentState]
-		if fn, ok := s.transitions[e]; ok {
-			newState := fn(f, s, e)
+		if fn, ok := s.transitions[eIn]; ok {
+			newState := fn(f, s, eIn)
 			if newState != nil {
-				log.Printf("--> %s\n", newState.Name)
+				log.Printf("%s| --> %s\n", f.ID, newState.Name)
+				eOut := Event(newState.Name)
+				select {
+				case f.Out <- eOut:
+					log.Printf("%s| Sending Event: %s\n", f.ID, newState.Name)
+				default:
+				}
 				// stopping timer before transition
 				if t, ok := s.timers[s.Name]; ok {
-					log.Printf("Stoping Timer %s\n", s.Name)
+					log.Printf("%s| Stoping Timer %s\n", f.ID, s.Name)
 					t.Stop()
 					delete(s.timers, s.Name)
 				}

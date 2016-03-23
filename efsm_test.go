@@ -7,12 +7,12 @@ import (
 
 func ExampleFSM() {
 
-	f := &FSM{}
+	f := &FSM{ID:"Example"}
 
-	c := make(chan Event, 1)
+	in := make(chan Event, 1)
+	out := make(chan Event, 1)
 
-	// initial state is Running
-	f.Engine(c)
+	f.Engine(in, out)
 
 	var err error
 
@@ -79,10 +79,12 @@ func ExampleFSM() {
 
 	// Send a reboot event and after 10s send a reset
 	go func() {
-		c <- "reboot"
+		in <- "reboot"
 		time.Sleep(10 * time.Second)
-		c <- "reset"
+		in <- "reset"
 	}()
+
+
 
 	time.Sleep(30 * time.Second)
 	fmt.Printf("Done")
