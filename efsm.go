@@ -167,9 +167,10 @@ func (f *FSM) Run(initial StateName) error {
 					t.Stop()
 					delete(s.timers, s.Name)
 				}
-			}
-			if err := f.setCurrentState(newState); err != nil {
-				panic(err)
+
+				if err := f.setCurrentState(newState); err != nil {
+					panic(err)
+				}
 			}
 		} else {
 			log.Printf("%s| Ignored Event: %+v\n", f.ID, eIn)
