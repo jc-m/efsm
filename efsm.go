@@ -75,6 +75,7 @@ func (f *FSM) setCurrentState(newState *State) error {
 		eOut := Event{
 			Name:  string(newState.Name),
 			Scope: f.ID,
+			Data:  newState.Data,
 		}
 		// Sending event without blocking
 
