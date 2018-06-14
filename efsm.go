@@ -1,15 +1,17 @@
 package efsm
 
 import (
-	"sync"
 	"fmt"
-	"time"
 	"log"
+	"sync"
+	"time"
 )
+
 // TODO event matching need to be revisited - for now, only look at the name
 type Event struct {
 	Name  string
 	Scope string
+	Data  interface{}
 }
 
 type Transition func(f *FSM, s *State, e Event) *State
@@ -33,9 +35,8 @@ type Timeout struct {
 // state x event => action => [state',...]
 // given a state,  and an event, determine an action/transition to one of several possible states
 
-
 type FSM struct {
-	ID           string
+	ID string
 	sync.Mutex
 	CurrentState StateName
 	States       map[StateName]*State
@@ -72,11 +73,12 @@ func (f *FSM) setCurrentState(newState *State) error {
 
 		log.Printf("%s| --> %s\n", f.ID, newState.Name)
 		eOut := Event{
-			Name: string(newState.Name),
+			Name:  string(newState.Name),
 			Scope: f.ID,
+			Data:  newState.Data,
 		}
 		// Sending event without blocking
-		
+
 		select {
 		case f.Out <- eOut:
 			log.Printf("%s| Sending Event: %+v\n", f.ID, eOut)
@@ -101,13 +103,13 @@ func (f *FSM) Goto(name StateName) *State {
 // TODO allow the specification of a default timeout for this state like When(name StateName, t Timeout)
 func (f *FSM) When(name StateName) *State {
 	if _, ok := f.States[name]; ok {
-		panic(fmt.Errorf("%s| Duplicate state registration %s", f.ID, name))
+		return f.States[name]
 	}
 	newState := &State{
-		Name:name,
+		Name:         name,
 		StateTimeout: nil,
 		transitions:  make(map[string]Transition),
-		timers: make(map[StateName]*time.Timer),
+		timers:       make(map[StateName]*time.Timer),
 	}
 	f.States[name] = newState
 
@@ -121,7 +123,7 @@ func (s *State) Using(v interface{}) *State {
 
 func (s *State) ForMax(d time.Duration) *State {
 	s.StateTimeout = &Timeout{
-		Event: Event{Name:string(s.Name) + "-timeout"},
+		Event:    Event{Name: string(s.Name) + "-timeout"},
 		duration: d,
 	}
 	return s
@@ -166,9 +168,10 @@ func (f *FSM) Run(initial StateName) error {
 					t.Stop()
 					delete(s.timers, s.Name)
 				}
-			}
-			if err := f.setCurrentState(newState); err != nil {
-				panic(err)
+
+				if err := f.setCurrentState(newState); err != nil {
+					panic(err)
+				}
 			}
 		} else {
 			log.Printf("%s| Ignored Event: %+v\n", f.ID, eIn)
