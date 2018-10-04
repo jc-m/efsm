@@ -70,20 +70,6 @@ func (f *FSM) setCurrentState(newState *State) error {
 				delete(s.timers, s.Name)
 			}()
 		}
-
-		log.Printf("%s| --> %s\n", f.ID, newState.Name)
-		eOut := Event{
-			Name:  string(newState.Name),
-			Scope: f.ID,
-		}
-		// Sending event without blocking
-
-		select {
-		case f.Out <- eOut:
-			log.Printf("%s| Sending Event: %+v\n", f.ID, eOut)
-		default:
-		}
-
 	} else {
 		return fmt.Errorf("%s| Invalid State", f.ID)
 	}
@@ -95,7 +81,8 @@ func (f *FSM) Goto(name StateName) *State {
 		f.CurrentState = name
 		return s
 	} else {
-		panic(fmt.Errorf("%s| Unknown state to transition to: %s", f.ID, name))
+		log.Printf("%s| Unknown state to transition to: %s", f.ID, name)
+		return nil
 	}
 }
 
@@ -137,6 +124,7 @@ func (s *State) Case(events []Event, fn Transition) error {
 	}
 	return nil
 }
+
 func (f *FSM) Engine(In, Out chan Event) error {
 	f.In = In
 	f.Out = Out
@@ -151,11 +139,10 @@ func (f *FSM) Run(initial StateName) error {
 	if s, ok := f.States[initial]; ok {
 		f.setCurrentState(s)
 	} else {
-		panic(fmt.Errorf("%s| Unknown initial state: %s", f.ID, initial))
+		return fmt.Errorf("%s| Unknown initial state: %s", f.ID, initial)
 	}
 
 	for eIn := range f.In {
-		f.Lock()
 		log.Printf("%s| Received Event: %+v\n", f.ID, eIn)
 		s := f.States[f.CurrentState]
 		if fn, ok := s.transitions[eIn.Name]; ok {
@@ -169,13 +156,27 @@ func (f *FSM) Run(initial StateName) error {
 				}
 
 				if err := f.setCurrentState(newState); err != nil {
-					panic(err)
+					log.Printf("%s| Error setting state %v: %v\n", f.ID, newState, err)
+					continue
+				}
+
+				log.Printf("%s| --> %s\n", f.ID, newState.Name)
+				eOut := Event{
+					Name:  string(newState.Name),
+					Data:  newState.Data,
+					Scope: f.ID,
+				}
+
+				// Sending event out without blocking
+				select {
+				case f.Out <- eOut:
+					log.Printf("%s| Sending Event: %+v\n", f.ID, eOut)
+				default:
 				}
 			}
 		} else {
-			log.Printf("%s| Ignored Event: %+v\n", f.ID, eIn)
+			log.Printf("%s| Ignored Event: %+v. New state is nil\n", f.ID, eIn)
 		}
-		f.Unlock()
 	}
 	// TODO process uncaught events
 	return nil
