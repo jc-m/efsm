@@ -2,30 +2,32 @@ package efsm
 
 import (
 	"fmt"
+	"testing"
 	"time"
 )
 
-func ExampleHFSM() {
+func TestMasterSlave(t *testing.T) {
+
 	var err error
 
-	master := &FSM{ID:"master"}
+	master := &FSM{ID: "master"}
 
 	masterIn := make(chan Event, 1)
 	masterOut := make(chan Event, 1)
 
 	master.Engine(masterIn, masterOut)
 
-	slave := &FSM{ID:"slave"}
+	slave := &FSM{ID: "slave"}
 
 	slaveIn := make(chan Event, 1)
 	slave.Engine(slaveIn, masterIn)
 
 	stop := Event{
-		Name: "stop",
+		Name:  "stop",
 		Scope: slave.ID,
 	}
 	err = slave.When("Running").Case([]Event{stop}, func(f *FSM, s *State, e Event) *State {
-		fmt.Printf("Case %s %s\n", s.Name, e)
+		fmt.Printf("Case %s %s\n", s.Name, e.Name)
 
 		return f.Goto("Stopped")
 	})
@@ -33,11 +35,11 @@ func ExampleHFSM() {
 		return
 	}
 	start := Event{
-		Name: "start",
+		Name:  "start",
 		Scope: slave.ID,
 	}
 	err = slave.When("Stopped").Case([]Event{start}, func(f *FSM, s *State, e Event) *State {
-		fmt.Printf("Case %s %s\n", s.Name, e)
+		fmt.Printf("Case %s %s\n", s.Name, e.Name)
 
 		return f.Goto("Running")
 	})
@@ -46,11 +48,11 @@ func ExampleHFSM() {
 	}
 
 	stopped := Event{
-		Name: "Stopped",
+		Name:  "Stopped",
 		Scope: slave.ID,
 	}
 	err = master.When("Running").Case([]Event{stopped}, func(f *FSM, s *State, e Event) *State {
-		fmt.Printf("Case %s %s\n", s.Name, e)
+		fmt.Printf("Case %s %s\n", s.Name, e.Name)
 
 		return f.Goto("Failed")
 	})
@@ -58,11 +60,11 @@ func ExampleHFSM() {
 		return
 	}
 	running := Event{
-		Name: "Running",
+		Name:  "Running",
 		Scope: slave.ID,
 	}
 	err = master.When("Failed").Case([]Event{running}, func(f *FSM, s *State, e Event) *State {
-		fmt.Printf("Case %s %s\n", s.Name, e)
+		fmt.Printf("Case %s %s\n", s.Name, e.Name)
 
 		return f.Goto("Running")
 	})
@@ -82,7 +84,6 @@ func ExampleHFSM() {
 	time.Sleep(10 * time.Second)
 	fmt.Printf("Done")
 
-
 	//Output:
 	//Case Running {stop slave}
 	//Case Running {Stopped slave}
@@ -94,19 +95,19 @@ func ExampleHFSM() {
 func createNode(name string, c chan Event) *FSM {
 	var err error
 
-	f := &FSM{ID:name}
+	f := &FSM{ID: name}
 
 	in := make(chan Event, 10)
 
 	f.Engine(in, c)
 
 	stop := Event{
-		Name: "stop",
+		Name:  "stop",
 		Scope: f.ID,
 	}
 
 	err = f.When("Running").Case([]Event{stop}, func(f *FSM, s *State, e Event) *State {
-		fmt.Printf("%s:Case %s %s\n", f.ID, s.Name, e)
+		fmt.Printf("%s:Case %s %s\n", f.ID, s.Name, e.Name)
 
 		return f.Goto("Stopped")
 	})
@@ -114,7 +115,7 @@ func createNode(name string, c chan Event) *FSM {
 		return nil
 	}
 	start := Event{
-		Name: "start",
+		Name:  "start",
 		Scope: f.ID,
 	}
 
@@ -133,13 +134,13 @@ func createNode(name string, c chan Event) *FSM {
 
 }
 
-func ExampleCluster() {
+func TestCluster(t *testing.T) {
 	var (
-		err error
-		nbnodes=5
+		err     error
+		nbnodes = 5
 	)
 
-	cluster := &FSM{ID:"cluster"}
+	cluster := &FSM{ID: "cluster"}
 
 	clusterIn := make(chan Event, nbnodes*2)
 	clusterOut := make(chan Event, nbnodes*2)
@@ -147,19 +148,19 @@ func ExampleCluster() {
 	cluster.Engine(clusterIn, clusterOut)
 
 	stopped := Event{
-		Name: "Stopped",
+		Name:  "Stopped",
 		Scope: "",
 	}
 
 	running := Event{
-		Name: "Running",
+		Name:  "Running",
 		Scope: "",
 	}
 
 	h := cluster.When("Healthy")
 
 	err = h.Case([]Event{stopped}, func(f *FSM, s *State, e Event) *State {
-		healthyCount :=0
+		healthyCount := 0
 
 		if s.Data != nil {
 			healthyCount = *s.Data.(*int)
@@ -177,7 +178,7 @@ func ExampleCluster() {
 	}
 
 	err = h.Case([]Event{running}, func(f *FSM, s *State, e Event) *State {
-		healthyCount :=0
+		healthyCount := 0
 
 		if s.Data != nil {
 			healthyCount = *s.Data.(*int)
@@ -194,12 +195,10 @@ func ExampleCluster() {
 		return
 	}
 
-
-
 	d := cluster.When("Degraded")
 
 	err = d.Case([]Event{running}, func(f *FSM, s *State, e Event) *State {
-		healthyCount :=0
+		healthyCount := 0
 
 		if s.Data != nil {
 
@@ -219,7 +218,7 @@ func ExampleCluster() {
 	}
 
 	err = d.Case([]Event{stopped}, func(f *FSM, s *State, e Event) *State {
-		healthyCount :=0
+		healthyCount := 0
 
 		if s.Data != nil {
 			healthyCount = *s.Data.(*int)
@@ -240,7 +239,7 @@ func ExampleCluster() {
 
 	go func() {
 		for e := range clusterOut {
-			fmt.Printf("Cluster: %s\n",e.Name)
+			fmt.Printf("Cluster: %s\n", e.Name)
 		}
 	}()
 
@@ -249,12 +248,12 @@ func ExampleCluster() {
 		// stopping node 3
 		n := nodes["node-3"]
 		n.In <- Event{
-			Name:"stop",
-			Scope:n.ID,
+			Name:  "stop",
+			Scope: n.ID,
 		}
 	}()
 	time.Sleep(20 * time.Second)
-	fmt.Printf("Done")
+	fmt.Println("Done")
 
 	//Output:
 	//Cluster: Degraded

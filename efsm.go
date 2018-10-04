@@ -25,6 +25,7 @@ type State struct {
 	timers       map[StateName]*time.Timer
 	transitions  map[string]Transition
 	Data         interface{}
+	sync.Mutex
 }
 
 type Timeout struct {
@@ -63,11 +64,13 @@ func (f *FSM) setCurrentState(newState *State) error {
 			s.timers[s.Name] = timer
 			go func() {
 				<-timer.C
+				s.Lock()
 				s.StateTimeout.Event.Scope = f.ID
 				log.Printf("%s| Timeout: %+v", f.ID, s.StateTimeout.Event)
 				f.In <- Event(s.StateTimeout.Event)
 				// timer expired or stopped - delete from map
 				delete(s.timers, s.Name)
+				s.Unlock()
 			}()
 		}
 	} else {
@@ -107,9 +110,9 @@ func (s *State) Using(v interface{}) *State {
 	return s
 }
 
-func (s *State) ForMax(d time.Duration) *State {
+func (s *State) ForMax(d time.Duration, eventName string) *State {
 	s.StateTimeout = &Timeout{
-		Event:    Event{Name: string(s.Name) + "-timeout"},
+		Event:    Event{Name: eventName},
 		duration: d,
 	}
 	return s
@@ -134,6 +137,10 @@ func (f *FSM) Engine(In, Out chan Event) error {
 }
 
 func (f *FSM) Run(initial StateName) error {
+	// prevent two threads from calling Run
+	f.Lock()
+	defer f.Unlock()
+
 	log.Printf("%s| Running ....", f.ID)
 
 	if s, ok := f.States[initial]; ok {
@@ -149,11 +156,14 @@ func (f *FSM) Run(initial StateName) error {
 			newState := fn(f, s, eIn)
 			if newState != nil {
 				// stopping timer before transition
+				s.Lock()
 				if t, ok := s.timers[s.Name]; ok {
+
 					log.Printf("%s| Stoping Timer %s\n", f.ID, s.Name)
 					t.Stop()
 					delete(s.timers, s.Name)
 				}
+				s.Unlock()
 
 				if err := f.setCurrentState(newState); err != nil {
 					log.Printf("%s| Error setting state %v: %v\n", f.ID, newState, err)
@@ -167,17 +177,15 @@ func (f *FSM) Run(initial StateName) error {
 					Scope: f.ID,
 				}
 
-				// Sending event out without blocking
 				select {
 				case f.Out <- eOut:
 					log.Printf("%s| Sending Event: %+v\n", f.ID, eOut)
-				default:
 				}
 			}
 		} else {
 			log.Printf("%s| Ignored Event: %+v. New state is nil\n", f.ID, eIn)
 		}
 	}
-	// TODO process uncaught events
+
 	return nil
 }
